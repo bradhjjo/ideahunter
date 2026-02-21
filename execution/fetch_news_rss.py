@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 AI News RSS Fetcher.
-Collects articles from major AI news/blog RSS feeds and saves them to .tmp/ai_news.json.
+Collects articles from major AI news/blog/newsletter RSS feeds.
+Results are saved to .tmp/ai_news.json.
 
 To add more sources, append entries to the `feeds` dict inside fetch_ai_news_rss().
 """
@@ -16,21 +17,37 @@ import time
 def fetch_ai_news_rss() -> List[Dict]:
     """Fetch articles from AI news/newsletter RSS feeds.
 
-    Some newsletters don't offer RSS, so we use equivalent blog/publication feeds.
     Add or remove sources in the dict below as needed.
+    All entries use standard RSS — no API keys required.
     """
     articles = []
 
     feeds = {
-        'HuggingFace Blog': 'https://huggingface.co/blog/feed.xml',
-        'OpenAI Blog':      'https://openai.com/blog/rss.xml',
-        'VentureBeat AI':   'https://venturebeat.com/category/ai/feed/',
+        # ── Curated AI newsletters ──────────────────────────────────────────
+        'TLDR AI':              'https://tldr.tech/rss/ai',
+        "Ben's Bites":          'https://bensbites.beehiiv.com/feed',
+        'Import AI':            'https://importai.substack.com/feed',
+        'The Batch (DeepLearning.AI)': 'https://www.deeplearning.ai/the-batch/rss/',
+
+        # ── AI research lab blogs ───────────────────────────────────────────
+        'HuggingFace Blog':     'https://huggingface.co/blog/feed.xml',
+        'OpenAI Blog':          'https://openai.com/blog/rss.xml',
+        'Anthropic Blog':       'https://www.anthropic.com/news/rss',
+        'Google DeepMind':      'https://deepmind.google/blog/rss.xml',
+        'Meta AI Blog':         'https://ai.meta.com/blog/rss/',
+        'Mistral AI':           'https://mistral.ai/news/rss',
+        'Microsoft Research':   'https://www.microsoft.com/en-us/research/feed/',
+
+        # ── VC / industry perspective ───────────────────────────────────────
+        'a16z':                 'https://a16z.com/feed/',
+        'VentureBeat AI':       'https://venturebeat.com/category/ai/feed/',
     }
 
     for source, url in feeds.items():
         try:
             feed = feedparser.parse(url)
-            for entry in feed.entries[:10]:  # max 10 per source
+            count_before = len(articles)
+            for entry in feed.entries[:8]:  # max 8 per source
                 summary = entry.get('summary', '')
                 articles.append({
                     'title':     entry.title,
@@ -39,9 +56,9 @@ def fetch_ai_news_rss() -> List[Dict]:
                     'published': entry.get('published', ''),
                     'summary':   summary[:500] + '...' if len(summary) > 500 else summary,
                 })
-            count = len([a for a in articles if a['source'] == source])
-            print(f"✓ {source}: {count} articles")
-            time.sleep(1)  # polite delay between requests
+            added = len(articles) - count_before
+            print(f"✓ {source}: {added} articles")
+            time.sleep(0.5)  # polite delay between requests
         except Exception as e:
             print(f"✗ {source} error: {e}")
 
@@ -67,8 +84,8 @@ def main():
     unique_articles = remove_duplicates(all_articles)
     print(f"\n📊 Total unique articles: {len(unique_articles)}")
 
-    # Keep the most recent 30 items (feeds are already newest-first)
-    recent_articles = unique_articles[:30]
+    # Keep the most recent 50 items
+    recent_articles = unique_articles[:50]
 
     output_dir = os.path.join(os.path.dirname(__file__), '..', '.tmp')
     os.makedirs(output_dir, exist_ok=True)
