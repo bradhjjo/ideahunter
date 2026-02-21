@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-스케줄러 스크립트
-매일 지정된 시간에 메인 워크플로우 실행
+Scheduler script.
+Runs the main workflow every day at a configured time.
 """
 
 import schedule
@@ -12,20 +12,20 @@ from datetime import datetime
 from dotenv import load_dotenv
 import subprocess
 
-# 환경 변수 로드 (.env 파일이 있으면 로드, 없으면 시스템 환경 변수 사용)
+# Load env vars from .env if present (not required in CI environments)
 try:
     load_dotenv()
 except:
-    pass  # GitHub Actions 등에서는 .env 파일이 없을 수 있음
+    pass
+
 
 def run_daily_workflow():
-    """일일 워크플로우 실행"""
+    """Execute the daily pipeline."""
     print(f"\n{'='*60}")
-    print(f"🍎 Running Daily AppleScout Agent")
+    print(f"💡 Running IdeaHunter Daily Workflow")
     print(f"⏰ {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'='*60}\n")
 
-    # main.py 실행
     script_dir = os.path.dirname(os.path.abspath(__file__))
     main_script = os.path.join(script_dir, "main.py")
 
@@ -44,32 +44,33 @@ def run_daily_workflow():
     except Exception as e:
         print(f"\n❌ Error running daily workflow: {e}")
 
+
 def main():
-    """메인 스케줄러"""
-    # 환경 변수에서 스케줄 시간 가져오기 (기본값: 07:00)
+    """Start the scheduler loop."""
+    # Set SCHEDULE_TIME in .env to override, e.g. SCHEDULE_TIME=08:30
     schedule_time = os.getenv('SCHEDULE_TIME', '07:00')
 
-    print("🤖 AppleScout Agent Scheduler Started")
+    print("🤖 IdeaHunter Scheduler Started")
     print(f"📅 Scheduled to run daily at {schedule_time}")
     print(f"⏰ Current time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("\nPress Ctrl+C to stop the scheduler\n")
 
-    # 스케줄 등록
     schedule.every().day.at(schedule_time).do(run_daily_workflow)
 
-    # 테스트 모드: 즉시 한 번 실행 (선택사항)
+    # Optional: pass --test to run immediately once on startup
     if '--test' in sys.argv:
-        print("🧪 Test mode: Running workflow immediately...\n")
+        print("🧪 Test mode: running workflow immediately...\n")
         run_daily_workflow()
 
-    # 스케줄러 루프
+    # Scheduler loop — checks every 60 seconds
     try:
         while True:
             schedule.run_pending()
-            time.sleep(60)  # 1분마다 체크
+            time.sleep(60)
     except KeyboardInterrupt:
         print("\n\n👋 Scheduler stopped by user")
         sys.exit(0)
+
 
 if __name__ == '__main__':
     main()

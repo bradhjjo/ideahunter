@@ -1,127 +1,110 @@
-# AppleScout Agent with Gemini AI
+# 💡 IdeaHunter
 
-This project is an automated system designed to monitor and analyze Apple-related news, social media trends, and stock market data. It generates comprehensive reports using Gemini Pro 2.5 and delivers them via Telegram every morning at 7:00 AM.
+Automated daily pipeline that collects the latest AI news and community trends, analyzes them with an LLM, and delivers **3 actionable AI product ideas** to your Telegram channel every morning.
 
-## Key Features
+## How It Works
 
-- AI-Powered Analysis: Utilizes Gemini Pro 2.5 for sophisticated news summarization, sentiment analysis, and insight extraction.
-- Multi-Source Aggregation: Collects data from Google News, Apple Newsroom, and leading technology publications via RSS.
-- Social Media Monitoring: Tracks relevant discussions on Reddit and Hacker News to gauge community sentiment.
-- Market Intelligence: Integrates $AAPL stock price data and trend analysis through Yahoo Finance.
-- Risk & Opportunity Assessment: Automatically identifies potential market risks and opportunities based on collected data.
-- Automated Reporting: Delivers formatted Markdown reports directly to a specified Telegram chat.
+```
+RSS Feeds (AI news)  ──┐
+GitHub Trending      ──┼──► LLM Analysis ──► Telegram Digest
+Product Hunt         ──┤    (Gemini or
+Reddit AI subs       ──┘     Local LLM)
+```
 
-## Architecture
+## Features
 
-The project adheres to a 3-layer architecture for improved reliability and maintainability:
+- **Multi-source data collection** — HuggingFace Blog, OpenAI Blog, VentureBeat, Product Hunt, GitHub Trending, Reddit (r/AItools, r/MachineLearning, r/SideProject)
+- **Flexible LLM backend** — Gemini (cloud, default) or any local LLM via OpenAI-compatible API (Ollama, LM Studio)
+- **Language-configurable output** — Korean by default; change one env var to switch to any language
+- **Daily Telegram delivery** — formatted HTML digest with trend summary + top 3 ideas
+- **Zero hardcoded secrets** — all credentials loaded from environment variables
 
-1. Directives (Layer 1): Standard Operating Procedures (SOPs) defined in markdown files within the `directives/` directory.
-2. Orchestration (Layer 2): AI-driven logic that processes directives and manages the workflow.
-3. Execution (Layer 3): Deterministic Python scripts in the `execution/` folder that handle API interactions and data processing.
+## Quick Start
 
-## Getting Started
+### 1. Clone & install
 
-### Prerequisites
+```bash
+git clone https://github.com/bradhjjo/ideahunter.git
+cd ideahunter
+pip install -r requirements.txt
+```
 
-- Python 3.8 or higher
-- Telegram Bot Token and Chat ID
-- Google Gemini API Key
+### 2. Configure
 
-### Installation
+```bash
+cp .env.example .env
+# Edit .env with your credentials
+```
 
-1. Clone the repository:
+Minimum required variables:
 
-   ```bash
-   cd c:\appdev\apple-scout
-   ```
+```env
+TELEGRAM_BOT_TOKEN=your_bot_token
+TELEGRAM_CHAT_ID=your_chat_id
+GEMINI_API_KEY=your_gemini_api_key   # if using Gemini (default)
+```
 
-2. Set up a virtual environment:
-
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. Configure environment variables:
-   Copy `.env.example` to `.env` and provide your credentials:
-
-   ```bash
-   copy .env.example .env
-   ```
-
-   Required variables: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `GEMINI_API_KEY`.
-
-### Telegram Configuration
-
-1. Create a Bot: Message [@BotFather](https://t.me/botfather) on Telegram to create a new bot and obtain an API token.
-2. Retrieve Chat ID: Send a message to your new bot, then visit `https://api.telegram.org/bot<TOKEN>/getUpdates` to find your `chat_id`.
-
-## Usage
-
-### Manual Execution
-
-To run the entire workflow manually:
+### 3. Run
 
 ```bash
 python execution/main.py
 ```
 
-### Scheduled Execution
-
-The system includes a built-in scheduler for daily automation:
+### 4. Schedule (daily automation)
 
 ```bash
 python execution/scheduler.py
 ```
 
-Use the `--test` flag to trigger an immediate execution for verification.
+Or set `SCHEDULE_TIME=07:00` in `.env` and keep the scheduler process running.
+
+## LLM Provider Options
+
+Set `LLM_PROVIDER` in `.env`:
+
+| Value | Description |
+|-------|-------------|
+| `gemini` (default) | Google Gemini API — requires `GEMINI_API_KEY` |
+| `local` | Local LLM via OpenAI-compatible API (Ollama / LM Studio) |
+
+For local LLM, also set:
+
+```env
+LLM_PROVIDER=local
+LOCAL_LLM_API_BASE=http://localhost:11434/v1   # Ollama
+LOCAL_LLM_MODEL=llama3
+```
+
+## Output Language
+
+Default output language is **Korean**. To change it:
+
+```env
+RESPONSE_LANGUAGE=English    # or: 日本語, Español, Français, etc.
+```
 
 ## Project Structure
 
-- `directives/`: SOPs for data collection, analysis, and reporting.
-- `execution/`: Core Python scripts for individual tasks.
-- `.tmp/`: Directory for intermediate data storage (auto-generated).
-- `AGENTS.md`: Technical documentation on the agentic architecture.
-- `README_KR.md`: Korean version of the documentation.
+```
+execution/
+├── main.py                  # Pipeline orchestrator
+├── fetch_news_rss.py        # AI news from RSS feeds
+├── fetch_trends.py          # GitHub / Product Hunt / Reddit trends
+├── analyze_ideas.py         # LLM analysis — Gemini or local
+├── send_telegram_message.py # Telegram delivery
+└── scheduler.py             # Daily cron-style scheduler
+```
 
-## Troubleshooting
+## GitHub Actions (Cloud Deployment)
 
-- Telegram Delivery Issues: Verify that the bot token and chat ID are correct and that the bot has been initialized with a message.
-- Data Collection Failures: Check network connectivity and ensure RSS feeds are accessible.
-- Sentiment Analysis Errors: If using the TextBlob fallback, ensure the required corpora are downloaded:
+Push to GitHub, then add your secrets under **Settings → Secrets and variables → Actions**:
 
-  ```bash
-  python -m textblob.download_corpora
-  ```
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
+- `GEMINI_API_KEY`
 
-## Cloud Deployment (GitHub Actions)
-
-The project includes a pre-configured GitHub Actions workflow for serverless daily execution.
-
-1. Push the code to a private GitHub repository.
-2. Navigate to Settings > Secrets and variables > Actions and add your `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, and `GEMINI_API_KEY`.
-3. The bot will automatically run daily at 13:00 UTC (7:00 AM local time).
-
-For more details, refer to [GITHUB_ACTIONS_SETUP.md](GITHUB_ACTIONS_SETUP.md).
+See [`GITHUB_ACTIONS_SETUP.md`](GITHUB_ACTIONS_SETUP.md) for the full workflow file.
 
 ## License
 
-This project is licensed under the MIT License.
-
-## 🤝 Contribution
-
-This project follows self-annealing principles:
-
-- Fix scripts when errors are found.
-- Update `directives/` documents with new learnings.
-- The system improves over time.
-
-## 📄 License
-
-MIT License
+MIT
