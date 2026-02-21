@@ -55,10 +55,10 @@ def format_llm_report(report: dict) -> str:
     # Product ideas
     ideas = analysis.get('product_ideas', [])
     if ideas:
-        lines.append("🎯 <b>Today's Top 3 AI Product Ideas</b>")
+        lines.append("🎯 <b>Today's Top 5 AI Product Ideas</b>")
         lines.append("")
 
-        for i, idea in enumerate(ideas[:3], 1):
+        for i, idea in enumerate(ideas[:5], 1):
             lines.append(f"<b>{i}. {idea.get('idea_name', 'Idea')}</b>")
             lines.append(f"<i>{idea.get('description', '')}</i>")
             lines.append(f"• <b>Target:</b> {idea.get('target_users', '')}")
