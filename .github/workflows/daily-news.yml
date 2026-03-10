@@ -1,10 +1,6 @@
 name: Daily AppleScout Agent
 
 on:
-  schedule:
-    # 매일 UTC 13:00 (CST 7:00 AM) 실행
-    - cron: '0 13 * * *'
-
   # 수동 실행 가능
   workflow_dispatch:
 
