@@ -7,14 +7,26 @@ Control via LLM_PROVIDER env var: 'gemini' (default) or 'local'
 
 import json
 import os
+import re
 from datetime import datetime
 from typing import List, Dict
 from dotenv import load_dotenv
 
 try:
     load_dotenv()
-except:
+except Exception:
     pass
+
+
+# Strips an optional ```json ... ``` markdown fence from an LLM response.
+# str.lstrip('```json') was a bug: it treats the arg as a character set, not
+# a literal prefix, so it could chew off arbitrary leading characters.
+_FENCE_PATTERN = re.compile(r'^\s*```(?:json)?\s*|\s*```\s*$', re.IGNORECASE)
+
+
+def _parse_json_response(text: str) -> Dict:
+    cleaned = _FENCE_PATTERN.sub('', text.strip())
+    return json.loads(cleaned)
 
 LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'gemini').lower()
 
@@ -124,12 +136,15 @@ def analyze_with_gemini(news_articles: List[Dict], social_posts: List[Dict]) -> 
 
     genai.configure(api_key=api_key)
     model_name = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
-    model = genai.GenerativeModel(model_name)
+    # response_mime_type forces Gemini to emit raw JSON (no markdown fence).
+    model = genai.GenerativeModel(
+        model_name,
+        generation_config={"response_mime_type": "application/json"},
+    )
     print(f"  provider : Gemini ({model_name})")
 
     response = model.generate_content(build_prompt(news_articles, social_posts))
-    text = response.text.strip().lstrip('```json').lstrip('```').rstrip('```').strip()
-    return json.loads(text)
+    return _parse_json_response(response.text)
 
 
 # ──────────────────────────────────────────────
@@ -155,7 +170,7 @@ def analyze_with_local(news_articles: List[Dict], social_posts: List[Dict]) -> D
         temperature=0.7,
         response_format={"type": "json_object"},
     )
-    return json.loads(response.choices[0].message.content.strip())
+    return _parse_json_response(response.choices[0].message.content)
 
 
 # ──────────────────────────────────────────────

@@ -7,6 +7,7 @@ Formats and sends the daily LLM report to a Telegram chat/channel.
 import json
 import os
 from datetime import datetime
+from typing import List
 from telegram import Bot
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
@@ -15,8 +16,24 @@ from dotenv import load_dotenv
 
 try:
     load_dotenv()
-except:
+except Exception:
     pass
+
+
+# Telegram caps each message at 4096 characters (HTML included).
+TELEGRAM_MAX_LEN = 4096
+
+
+def _provider_label(report: dict) -> str:
+    """Human-readable label for the LLM that generated the report."""
+    provider = (report.get('llm_provider') or '').lower()
+    if provider == 'gemini':
+        model = os.getenv('GEMINI_MODEL', 'gemini-2.5-flash')
+        return f"Gemini ({model})"
+    if provider == 'local':
+        model = os.getenv('LOCAL_LLM_MODEL', 'local-model')
+        return f"Local LLM ({model})"
+    return provider or 'LLM'
 
 
 def format_llm_report(report: dict) -> str:
@@ -26,7 +43,7 @@ def format_llm_report(report: dict) -> str:
     # Header
     lines.append("💡 <b>AI Product Idea Hunter</b>")
     lines.append(f"📅 {report['date']}")
-    lines.append("🤖 <i>Powered by Gemini 2.5 Flash</i>")
+    lines.append(f"🤖 <i>Powered by {_provider_label(report)}</i>")
     lines.append("")
 
     # Data source summary
@@ -69,26 +86,57 @@ def format_llm_report(report: dict) -> str:
     return '\n'.join(lines)
 
 
-async def send_telegram_message(bot_token: str, chat_id: str, message: str, max_retries: int = 3):
-    """Send message to Telegram (async). Respects Telegram's 4096-char limit."""
-    bot = Bot(token=bot_token)
+def split_for_telegram(message: str, limit: int = TELEGRAM_MAX_LEN) -> List[str]:
+    """Split a long HTML message into <=limit chunks on line boundaries.
 
-    for attempt in range(max_retries):
-        try:
-            await bot.send_message(
-                chat_id=chat_id,
-                text=message[:4096],
-                parse_mode=ParseMode.HTML,
-                disable_web_page_preview=True
-            )
-            print("✓ Message sent successfully")
-            break
-        except TelegramError as e:
-            print(f"✗ Attempt {attempt+1}/{max_retries} failed: {e}")
-            if attempt < max_retries - 1:
-                await asyncio.sleep(2 ** attempt)
-            else:
-                raise
+    Slicing mid-tag (e.g. inside `<b>...`) makes Telegram reject the message
+    with parse_mode=HTML. Since format_llm_report only opens and closes tags
+    within a single line, splitting on '\n' guarantees each chunk is valid HTML.
+    """
+    if len(message) <= limit:
+        return [message]
+
+    chunks: List[str] = []
+    current = ""
+    for line in message.split('\n'):
+        candidate = f"{current}\n{line}" if current else line
+        if len(candidate) <= limit:
+            current = candidate
+            continue
+        if current:
+            chunks.append(current)
+        # A single line longer than the limit is rare here, but guard anyway.
+        while len(line) > limit:
+            chunks.append(line[:limit])
+            line = line[limit:]
+        current = line
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+async def send_telegram_message(bot_token: str, chat_id: str, message: str, max_retries: int = 3):
+    """Send message to Telegram (async), splitting on line boundaries if needed."""
+    bot = Bot(token=bot_token)
+    chunks = split_for_telegram(message)
+
+    for chunk in chunks:
+        for attempt in range(max_retries):
+            try:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=chunk,
+                    parse_mode=ParseMode.HTML,
+                    disable_web_page_preview=True,
+                )
+                print(f"✓ Sent chunk ({len(chunk)} chars)")
+                break
+            except TelegramError as e:
+                print(f"✗ Attempt {attempt+1}/{max_retries} failed: {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(2 ** attempt)
+                else:
+                    raise
 
 
 def main():
