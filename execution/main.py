@@ -1,88 +1,93 @@
 #!/usr/bin/env python3
 """
-Main orchestration script.
-Runs all pipeline steps in sequence (Layer 2).
+Pipeline orchestrator.
+
+Runs the four pipeline stages in-process (no subprocess), with structured
+logging and cross-source URL deduplication between news and trends.
 """
 
-import sys
+import logging
 import os
+import sys
 from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-TELEGRAM_STEP = "Send Telegram Message"
+import fetch_news_rss
+import fetch_trends
+import analyze_ideas
+import send_telegram_message
+
+log = logging.getLogger("ideahunter")
 
 
-def run_step(step_name: str, script_path: str) -> bool:
-    """Run an individual pipeline script as a subprocess."""
-    print(f"\n{'='*60}")
-    print(f"Step: {step_name}")
-    print(f"{'='*60}")
+def _configure_logging() -> None:
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
+
+def _run(stage: str, fn) -> bool:
+    log.info("---- %s ----", stage)
     try:
-        import subprocess
-        result = subprocess.run(
-            [sys.executable, script_path],
-            capture_output=False,
-            text=True
-        )
-
-        if result.returncode == 0:
-            print(f"✅ {step_name} completed successfully")
-            return True
-        else:
-            print(f"❌ {step_name} failed with exit code {result.returncode}")
-            return False
-
-    except Exception as e:
-        print(f"❌ {step_name} failed with error: {e}")
+        ok = bool(fn())
+    except Exception:
+        log.exception("stage %r raised", stage)
         return False
+    log.info("%s: %s", stage, "OK" if ok else "FAILED")
+    return ok
 
 
-def main():
-    """Main workflow."""
-    print("🚀 Starting IdeaHunter Daily Workflow")
-    print(f"⏰ Started at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+def _cross_dedup_trends_against_news() -> None:
+    """Drop any trend item whose URL already appears in the news file.
 
-    script_dir = os.path.dirname(os.path.abspath(__file__))
+    Hacker News / YC Launch posts can show up in both feeds; keeping only the
+    news copy avoids duplicate context being fed to the LLM.
+    """
+    import json
+    tmp = os.path.join(os.path.dirname(__file__), "..", ".tmp")
+    news_path = os.path.join(tmp, "ai_news.json")
+    trends_path = os.path.join(tmp, "ai_trends.json")
+    if not (os.path.exists(news_path) and os.path.exists(trends_path)):
+        return
 
-    # Pipeline steps — add or remove sources here as needed
-    steps = [
-        ("Fetch AI News (RSS)",     os.path.join(script_dir, "fetch_news_rss.py")),
-        ("Fetch AI Trends",         os.path.join(script_dir, "fetch_trends.py")),
-        ("Analyze Ideas (LLM)",     os.path.join(script_dir, "analyze_ideas.py")),
-        (TELEGRAM_STEP,             os.path.join(script_dir, "send_telegram_message.py")),
+    with open(news_path, encoding="utf-8") as f:
+        news_urls = {a.get("url") for a in json.load(f) if a.get("url")}
+    with open(trends_path, encoding="utf-8") as f:
+        trends = json.load(f)
+
+    before = len(trends)
+    trends = [t for t in trends if t.get("url") not in news_urls]
+    removed = before - len(trends)
+    if removed:
+        with open(trends_path, "w", encoding="utf-8") as f:
+            json.dump(trends, f, ensure_ascii=False, indent=2)
+        log.info("cross-dedup: removed %d trend(s) duplicating news URLs", removed)
+
+
+def main() -> int:
+    _configure_logging()
+    log.info("IdeaHunter pipeline starting at %s", datetime.now().isoformat(timespec="seconds"))
+
+    stages = [
+        ("fetch_news_rss",        fetch_news_rss.main),
+        ("fetch_trends",          fetch_trends.main),
+        ("cross_dedup",           lambda: (_cross_dedup_trends_against_news(), True)[1]),
+        ("analyze_ideas",         analyze_ideas.main),
+        ("send_telegram_message", send_telegram_message.main),
     ]
 
-    results = []
-    for step_name, script_path in steps:
-        success = run_step(step_name, script_path)
-        results.append((step_name, success))
+    results = [(name, _run(name, fn)) for name, fn in stages]
 
-        if not success and step_name != TELEGRAM_STEP:
-            print(f"\n⚠️  Critical step '{step_name}' failed. Continuing anyway...")
+    log.info("---- summary ----")
+    for name, ok in results:
+        log.info("  %s: %s", name, "OK" if ok else "FAILED")
+    log.info("IdeaHunter pipeline finished at %s", datetime.now().isoformat(timespec="seconds"))
 
-    # Summary
-    print(f"\n{'='*60}")
-    print("📊 Workflow Summary")
-    print(f"{'='*60}")
-
-    for step_name, success in results:
-        status = "✅ SUCCESS" if success else "❌ FAILED"
-        print(f"{status}: {step_name}")
-
-    all_success = all(success for _, success in results)
-
-    print(f"\n⏰ Finished at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
-    if all_success:
-        print("🎉 All steps completed successfully!")
-        return 0
-    else:
-        print("⚠️  Some steps failed. Check logs above.")
-        return 1
+    return 0 if all(ok for _, ok in results) else 1
 
 
-if __name__ == '__main__':
-    exit_code = main()
-    sys.exit(exit_code)
+if __name__ == "__main__":
+    sys.exit(main())

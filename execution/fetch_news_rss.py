@@ -10,8 +10,26 @@ To add more sources, append entries to the `feeds` dict inside fetch_ai_news_rss
 import feedparser
 import json
 import os
+from calendar import timegm
+from datetime import datetime, timedelta, timezone
 from typing import List, Dict
 import time
+
+
+# Drop RSS entries older than this many days when a usable timestamp exists.
+MAX_AGE_DAYS = int(os.getenv("NEWS_MAX_AGE_DAYS", "7"))
+
+
+def _entry_is_fresh(entry, max_age_days: int = MAX_AGE_DAYS) -> bool:
+    """Return True if the entry has no usable timestamp or is within the window."""
+    published_struct = entry.get("published_parsed") or entry.get("updated_parsed")
+    if not published_struct:
+        return True  # no date → keep, let the LLM decide
+    try:
+        published = datetime.fromtimestamp(timegm(published_struct), tz=timezone.utc)
+    except (TypeError, ValueError, OverflowError):
+        return True
+    return (datetime.now(timezone.utc) - published) <= timedelta(days=max_age_days)
 
 
 def fetch_ai_news_rss() -> List[Dict]:
@@ -19,6 +37,8 @@ def fetch_ai_news_rss() -> List[Dict]:
 
     Add or remove sources in the dict below as needed.
     All entries use standard RSS — no API keys required.
+    Items older than NEWS_MAX_AGE_DAYS (default 7) are dropped when the feed
+    provides a parseable date.
     """
     articles = []
 
@@ -48,6 +68,8 @@ def fetch_ai_news_rss() -> List[Dict]:
             feed = feedparser.parse(url)
             count_before = len(articles)
             for entry in feed.entries[:8]:  # max 8 per source
+                if not _entry_is_fresh(entry):
+                    continue
                 summary = entry.get('summary', '')
                 articles.append({
                     'title':     entry.title,
