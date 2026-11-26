@@ -17,8 +17,10 @@ Sources:
 
 import os
 import json
+import re
 import requests
 from typing import List, Dict
+from bs4 import BeautifulSoup
 import feedparser
 import time
 
@@ -27,34 +29,51 @@ import time
 # GitHub Trending
 # ──────────────────────────────────────────────
 
-def fetch_github_trending() -> List[Dict]:
-    """Fetch trending AI/ML repositories from GitHub Trending API.
+# Word-boundary matching avoids false positives like "ai" inside "said" / "main".
+AI_KEYWORD_PATTERN = re.compile(
+    r'\b(ai|ml|llm|gpt|model|agent|rag|diffusion|transformer|generative|embedding)\b',
+    re.IGNORECASE,
+)
 
-    Uses an unofficial trending API. If it goes down, replace with
-    a direct scrape of github.com/trending or a self-hosted RSSHub feed.
+
+def fetch_github_trending() -> List[Dict]:
+    """Scrape AI/ML repos from github.com/trending.
+
+    The previous Heroku-hosted unofficial API is dead (Heroku free dynos shut
+    down in late 2022), so we parse the public trending page directly.
     """
-    url = "https://msh-gh-trending-api.herokuapp.com/repositories?since=daily"
-    trends = []
+    url = "https://github.com/trending?since=daily"
+    headers = {'User-Agent': 'Mozilla/5.0 IdeaHunterBot/1.0'}
+    trends: List[Dict] = []
 
     try:
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            repos = response.json()
-            ai_keywords = ['ai', 'ml', 'llm', 'gpt', 'model', 'agent', 'rag', 'diffusion', 'transformer']
+        response = requests.get(url, headers=headers, timeout=15)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
 
-            for repo in repos:
-                desc = str(repo.get('description', '')).lower()
-                name = str(repo.get('name', '')).lower()
+        for article in soup.select('article.Box-row'):
+            anchor = article.select_one('h2 a')
+            if not anchor:
+                continue
+            repo_path = anchor.get('href', '').strip('/')
+            if '/' not in repo_path:
+                continue
 
-                if any(kw in desc or kw in name for kw in ai_keywords):
-                    trends.append({
-                        'title':       f"{repo.get('author')}/{repo.get('name')}",
-                        'url':         repo.get('url'),
-                        'description': repo.get('description', ''),
-                        'source':      'GitHub Trending (AI)',
-                    })
-                    if len(trends) >= 10:
-                        break
+            desc_el = article.select_one('p')
+            description = desc_el.get_text(strip=True) if desc_el else ''
+
+            haystack = f"{repo_path} {description}"
+            if not AI_KEYWORD_PATTERN.search(haystack):
+                continue
+
+            trends.append({
+                'title':       repo_path,
+                'url':         f"https://github.com/{repo_path}",
+                'description': description,
+                'source':      'GitHub Trending (AI)',
+            })
+            if len(trends) >= 10:
+                break
     except Exception as e:
         print(f"✗ GitHub Trending error: {e}")
 
@@ -73,9 +92,8 @@ def fetch_producthunt_rss() -> List[Dict]:
     try:
         feed = feedparser.parse(url)
         for entry in feed.entries[:20]:
-            title   = entry.title.lower()
-            summary = entry.get('summary', '').lower()
-            if any(kw in title or kw in summary for kw in ['ai', 'gpt', 'intelligent', 'agent', 'llm', 'ml']):
+            haystack = f"{entry.title} {entry.get('summary', '')}"
+            if AI_KEYWORD_PATTERN.search(haystack) or 'intelligent' in haystack.lower():
                 products.append({
                     'title':       entry.title,
                     'url':         entry.link,
@@ -113,7 +131,7 @@ def fetch_reddit_ai() -> List[Dict]:
                     text  = post.get('selftext', '')[:300]
 
                     # For general subs, only keep AI-related posts
-                    if sub == 'SideProject' and 'ai' not in title.lower() and 'ai' not in text.lower():
+                    if sub == 'SideProject' and not AI_KEYWORD_PATTERN.search(f"{title} {text}"):
                         continue
 
                     posts.append({
@@ -147,16 +165,14 @@ def fetch_hackernews() -> List[Dict]:
         'HN (Ask HN)':   'https://hnrss.org/ask?points=5',
     }
     posts = []
-    ai_keywords = ['ai', 'llm', 'gpt', 'model', 'agent', 'ml', 'machine learning', 'generative']
 
     for source, url in hn_feeds.items():
         try:
             feed = feedparser.parse(url)
             for entry in feed.entries[:10]:
-                title = entry.title.lower()
                 # For Show/Ask HN, filter to AI-related only
                 if 'show' in source.lower() or 'ask' in source.lower():
-                    if not any(kw in title for kw in ai_keywords):
+                    if not AI_KEYWORD_PATTERN.search(entry.title):
                         continue
                 posts.append({
                     'title':       entry.title,
@@ -183,14 +199,13 @@ def fetch_yc_launches() -> List[Dict]:
     """
     url = "https://hnrss.org/launches"
     launches = []
-    ai_keywords = ['ai', 'llm', 'gpt', 'ml', 'model', 'agent', 'data', 'automation', 'copilot']
+    extra_keywords = re.compile(r'\b(automation|copilot|data)\b', re.IGNORECASE)
 
     try:
         feed = feedparser.parse(url)
         for entry in feed.entries[:20]:
-            title   = entry.title.lower()
-            summary = entry.get('summary', '').lower()
-            if any(kw in title or kw in summary for kw in ai_keywords):
+            haystack = f"{entry.title} {entry.get('summary', '')}"
+            if AI_KEYWORD_PATTERN.search(haystack) or extra_keywords.search(haystack):
                 launches.append({
                     'title':       entry.title,
                     'url':         entry.link,
@@ -242,14 +257,13 @@ def fetch_betalist() -> List[Dict]:
     """Fetch early-stage AI startups from BetaList RSS."""
     url = "https://betalist.com/feed"
     startups = []
-    ai_keywords = ['ai', 'llm', 'gpt', 'machine learning', 'generative', 'automation', 'agent']
+    extra_keywords = re.compile(r'\bautomation\b', re.IGNORECASE)
 
     try:
         feed = feedparser.parse(url)
         for entry in feed.entries[:20]:
-            title   = entry.title.lower()
-            summary = entry.get('summary', '').lower()
-            if any(kw in title or kw in summary for kw in ai_keywords):
+            haystack = f"{entry.title} {entry.get('summary', '')}"
+            if AI_KEYWORD_PATTERN.search(haystack) or extra_keywords.search(haystack):
                 startups.append({
                     'title':       entry.title,
                     'url':         entry.link,
@@ -271,14 +285,13 @@ def fetch_indiehackers() -> List[Dict]:
     """Fetch posts from Indie Hackers RSS feed (builder sentiment + side projects)."""
     url = "https://www.indiehackers.com/feed.xml"
     posts = []
-    ai_keywords = ['ai', 'llm', 'gpt', 'automation', 'saas', 'product', 'launch']
+    extra_keywords = re.compile(r'\b(automation|saas|launch)\b', re.IGNORECASE)
 
     try:
         feed = feedparser.parse(url)
         for entry in feed.entries[:15]:
-            title   = entry.title.lower()
-            summary = entry.get('summary', entry.get('description', '')).lower()
-            if any(kw in title or kw in summary for kw in ai_keywords):
+            haystack = f"{entry.title} {entry.get('summary', entry.get('description', ''))}"
+            if AI_KEYWORD_PATTERN.search(haystack) or extra_keywords.search(haystack):
                 posts.append({
                     'title':       entry.title,
                     'url':         entry.link,

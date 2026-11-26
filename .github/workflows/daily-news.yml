@@ -1,11 +1,12 @@
-name: Daily AppleScout Agent
+name: Daily IdeaHunter
 
 on:
-  # 수동 실행 가능
+  # Manual trigger only. To re-enable daily runs, add a `schedule:` block
+  # (see GITHUB_ACTIONS_SETUP.md for a cron example).
   workflow_dispatch:
 
 jobs:
-  run-news-bot:
+  run-ideahunter:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,13 +24,11 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run AppleScout Agent
+      - name: Run IdeaHunter pipeline
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          TIMEZONE: America/Chicago
-          SCHEDULE_TIME: "07:00"
         run: |
           python execution/main.py
 

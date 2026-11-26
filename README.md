@@ -1,22 +1,25 @@
 # 💡 IdeaHunter
 
-Automated daily pipeline that collects the latest AI news and community trends, analyzes them with an LLM, and delivers **3 actionable AI product ideas** to your Telegram channel every morning.
+Automated daily pipeline that collects the latest AI news and community trends, analyzes them with an LLM, and delivers **5 actionable AI product ideas** to your Telegram channel every morning.
 
 ## How It Works
 
 ```
-RSS Feeds (AI news)  ──┐
-GitHub Trending      ──┼──► LLM Analysis ──► Telegram Digest
-Product Hunt         ──┤    (Gemini or
-Reddit AI subs       ──┘     Local LLM)
+RSS Feeds (AI news + labs + VC) ──┐
+GitHub Trending (AI repos)        │
+Product Hunt (AI products)        │
+Reddit (AI subreddits)            ├──► LLM Analysis ──► Telegram Digest
+Hacker News + YC Launches         │    (Gemini or
+Papers With Code                  │     local LLM)
+BetaList / Indie Hackers          ──┘
 ```
 
 ## Features
 
-- **Multi-source data collection** — HuggingFace Blog, OpenAI Blog, VentureBeat, Product Hunt, GitHub Trending, Reddit (r/AItools, r/MachineLearning, r/SideProject)
+- **Multi-source data collection** — 13 AI news/blog RSS feeds (TLDR AI, Ben's Bites, Import AI, The Batch, HuggingFace, OpenAI, Anthropic, DeepMind, Meta AI, Mistral, Microsoft Research, a16z, VentureBeat) plus 8 trend sources (GitHub Trending, Product Hunt, Reddit, Hacker News, YC Launches, Papers With Code, BetaList, Indie Hackers)
 - **Flexible LLM backend** — Gemini (cloud, default) or any local LLM via OpenAI-compatible API (Ollama, LM Studio)
 - **Language-configurable output** — Korean by default; change one env var to switch to any language
-- **Daily Telegram delivery** — formatted HTML digest with trend summary + top 3 ideas
+- **Daily Telegram delivery** — formatted HTML digest with trend summary + top 5 ideas, auto-split across multiple messages when over 4096 chars
 - **Zero hardcoded secrets** — all credentials loaded from environment variables
 
 ## Quick Start

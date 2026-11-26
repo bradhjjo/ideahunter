@@ -1,204 +1,88 @@
-# GitHub Actions 자동 배포 가이드
+# GitHub Actions 배포 가이드
 
-## 🚀 GitHub Actions로 자동 실행 설정하기
-
-이 가이드를 따라하면 **15분 안에** 매일 아침 7시 자동 실행이 완료됩니다!
+IdeaHunter를 로컬 머신 없이 GitHub Actions에서 돌리는 방법입니다.
 
 ---
 
-## 1️⃣ GitHub 저장소 생성
-
-### 옵션 A: GitHub 웹사이트에서
-
-1. [GitHub](https://github.com) 로그인
-2. 우측 상단 `+` → `New repository` 클릭
-3. 저장소 이름: `apple-scout` (추천)
-4. **Public** 또는 **Private** 선택 (둘 다 무료)
-5. `Create repository` 클릭
-
-### 옵션 B: GitHub CLI로
+## 1. 리포지토리 푸시
 
 ```bash
-gh repo create apple-scout --public --source=. --remote=origin --push
-```
-
----
-
-## 2️⃣ 코드를 GitHub에 푸시
-
-```bash
-cd c:\appdev\apple-scout
-
-# Git 초기화 (아직 안했다면)
 git init
-
-# 모든 파일 추가 (.gitignore가 .env 제외함)
 git add .
-
-# 커밋
-git commit -m "Initial commit: AppleScout Agent with Gemini AI"
-
-# GitHub 저장소 연결 (본인의 username으로 변경)
-git remote add origin https://github.com/YOUR_USERNAME/apple-scout.git
-
-# 푸시
+git commit -m "Initial commit: IdeaHunter"
+git remote add origin https://github.com/YOUR_USERNAME/ideahunter.git
 git push -u origin main
 ```
 
-> **중요**: `.env` 파일은 자동으로 제외됩니다 (`.gitignore`에 포함)
+`.env` 파일은 `.gitignore`에 의해 자동 제외됩니다.
 
 ---
 
-## 3️⃣ GitHub Secrets 설정 (API 키 등록)
+## 2. GitHub Secrets 등록
 
-### 웹사이트에서 설정
+리포지토리 페이지 → `Settings` → `Secrets and variables` → `Actions` → `New repository secret`.
 
-1. GitHub 저장소 페이지로 이동
-2. `Settings` 탭 클릭
-3. 왼쪽 메뉴에서 `Secrets and variables` → `Actions` 클릭
-4. `New repository secret` 버튼 클릭
+다음 3개를 등록:
 
-### 다음 3개의 Secret 추가
+| Secret 이름 | 값 |
+|---|---|
+| `TELEGRAM_BOT_TOKEN` | BotFather에서 발급받은 토큰 |
+| `TELEGRAM_CHAT_ID` | 본인의 Chat ID (또는 채널 ID) |
+| `GEMINI_API_KEY` | Google AI Studio에서 발급받은 키 |
 
-#### Secret 1: TELEGRAM_BOT_TOKEN
-
-- Name: `TELEGRAM_BOT_TOKEN`
-- Value: `YOUR_TELEGRAM_BOT_TOKEN` (BotFather에서 발급받은 토큰)
-
-#### Secret 2: TELEGRAM_CHAT_ID
-
-- Name: `TELEGRAM_CHAT_ID`
-- Value: `YOUR_TELEGRAM_CHAT_ID` (본인의 Chat ID)
-
-#### Secret 3: GEMINI_API_KEY
-
-- Name: `GEMINI_API_KEY`
-- Value: `YOUR_GEMINI_API_KEY` (Google AI Studio에서 발급받은 키)
+로컬 LLM을 쓰려면 위 키 대신 `LLM_PROVIDER`, `LOCAL_LLM_API_BASE`, `LOCAL_LLM_MODEL`을 Secrets로 등록하고 워크플로의 `env:` 블록에 추가하세요. (다만 GitHub Actions 러너에서 로컬 LLM에 접근하려면 별도 터널/엔드포인트가 필요합니다.)
 
 ---
 
-## 4️⃣ 자동 실행 확인
+## 3. 워크플로 실행
 
-### GitHub Actions 페이지에서
+워크플로 파일은 [`.github/workflows/daily-news.yml`](.github/workflows/daily-news.yml)에 있습니다.
 
-1. 저장소의 `Actions` 탭 클릭
-2. 왼쪽에서 `Daily AppleScout Agent` 워크플로우 선택
-3. 다음 실행 예정 시간 확인
+### 수동 실행
 
-### 수동으로 테스트 실행
+`Actions` 탭 → `Daily IdeaHunter` → `Run workflow` 버튼.
 
-1. `Actions` 탭 → `Daily AppleScout Agent` 선택
-2. 우측 `Run workflow` 버튼 클릭
-3. `Run workflow` 확인
-4. 약 1분 후 텔레그램으로 메시지 도착!
+### 매일 자동 실행
 
----
-
-## 📅 스케줄 설정
-
-현재 설정: **매일 UTC 13:00 (CST 7:00 AM)**
-
-### 시간 변경하려면
-
-`.github/workflows/daily-news.yml` 파일의 cron 수정:
+기본 워크플로는 `workflow_dispatch:`(수동)만 설정되어 있습니다. 매일 자동 실행하려면 `on:` 블록에 `schedule:`을 추가:
 
 ```yaml
-schedule:
-  - cron: '0 13 * * *'  # UTC 13:00 = CST 7:00 AM
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 13 * * *'   # 매일 UTC 13:00 = 한국 22:00 = CST 07:00
 ```
 
-#### 다른 시간 예시
+> GitHub Actions cron은 **UTC 기준**입니다.
 
-- `0 14 * * *` - 오전 8시 (CST)
-- `0 12 * * *` - 오전 6시 (CST)
-- `0 1 * * *` - 오후 7시 (CST)
+| 원하는 현지 시간 | UTC cron 예시 (KST=UTC+9 기준) |
+|---|---|
+| 한국 07:00 | `0 22 * * *` (전날 UTC) |
+| 한국 09:00 | `0 0 * * *` |
+| 한국 21:00 | `0 12 * * *` |
 
-> **참고**: GitHub Actions는 UTC 기준입니다. CST는 UTC-6입니다.
-
----
-
-## ✅ 완료
-
-이제 매일 아침 7시에 자동으로:
-
-1. 🍎 애플 뉴스 50개 수집
-2. 💬 소셜 미디어 포스트 수집
-3. 📈 주가 데이터 수집
-4. 🤖 Gemini AI 분석
-5. 📱 텔레그램으로 리포트 전송
+> GitHub Actions 스케줄은 러너 혼잡도에 따라 수 분~수십 분 지연될 수 있습니다 (보장되는 정시 실행이 아님).
 
 ---
 
-## 🔍 모니터링
+## 4. 실행 확인 / 디버깅
 
-### 실행 로그 확인
-
-1. `Actions` 탭 → 최근 실행 클릭
-2. `Run AppleScout Agent` 단계 클릭
-3. 상세 로그 확인
-
-### 실패 시
-
-- GitHub에서 자동으로 이메일 알림
-- `Actions` 탭에서 빨간색 X 표시
-- 로그에서 오류 원인 확인
-- `Re-run jobs` 버튼으로 재실행
+- `Actions` 탭에서 실행 로그를 확인할 수 있습니다.
+- 실패 시 워크플로가 `.tmp/` 디렉터리를 `error-logs` 아티팩트로 업로드하므로 7일간 다운로드 가능합니다.
+- 실패하면 GitHub가 등록된 이메일로 자동 알림을 보냅니다 (`Settings → Notifications → Actions`).
 
 ---
 
-## 💰 비용
+## 5. 비용
 
-**완전 무료!**
-
-- GitHub Actions: 무료 (월 2,000분)
-- 일일 사용량: ~1분
-- 월 사용량: ~30분 (무료 한도의 1.5%)
+- GitHub Actions: 퍼블릭 리포는 무료, 프라이빗은 월 2,000분 무료 제공.
+- 1회 실행에 약 1~2분 → 매일 돌려도 월 30~60분.
 
 ---
 
-## 🛠️ 문제 해결
+## 6. 시크릿 관리
 
-### "Secrets not found" 오류
+자세한 가이드는 [`SECURITY.md`](SECURITY.md) 참고.
 
-→ GitHub Secrets 설정 확인 (대소문자 정확히)
-
-### 텔레그램 메시지 안옴
-
-→ `Actions` 로그에서 오류 확인
-
-### Gemini API 오류
-
-→ API 키 확인 및 할당량 체크
-
-### 시간이 안맞음
-
-→ UTC 시간대 확인 (CST = UTC-6)
-
----
-
-## 📝 추가 팁
-
-### 여러 시간대에 실행
-
-```yaml
-schedule:
-  - cron: '0 13 * * *'  # 오전 7시
-  - cron: '0 1 * * *'   # 오후 7시
-```
-
-### 주말 제외
-
-```yaml
-schedule:
-  - cron: '0 13 * * 1-5'  # 월-금만
-```
-
-### 알림 끄기
-
-저장소 Settings → Notifications → Actions 체크 해제
-
----
-
-## 🎉 성공
-
-이제 컴퓨터를 끄고 있어도 매일 아침 애플 뉴스 리포트를 받을 수 있습니다! 🚀
+- `.env`는 절대 커밋 금지 (`.gitignore`에 등록되어 있음).
+- 토큰이 노출되면 즉시 발급처에서 회수(revoke)하고 새 토큰으로 GitHub Secret을 갱신.
